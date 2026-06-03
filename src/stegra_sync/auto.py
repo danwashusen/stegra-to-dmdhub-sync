@@ -249,6 +249,7 @@ def run_auto(config: AutoConfig, console: Console) -> int:
         console.print(
             f"  [green]✓[/green] no actions — {target} is already in sync"
         )
+        local_target_mod.render_tree(target, manifest, console)
         return 0
 
     summary = plan_obj.summary()
@@ -308,6 +309,12 @@ def run_auto(config: AutoConfig, console: Console) -> int:
     console.print(
         f"  [green]✓ Applied {counts['ok']} action(s) to {target}[/green]"
         + (f" ({counts['skip']} skipped)" if counts["skip"] else "")
+    )
+
+    # Final step: render the target as a tree (re-scan to pick up the writes
+    # the executor just performed).
+    local_target_mod.render_tree(
+        target, local_target_mod.scan_target(target), console
     )
     return 0
 

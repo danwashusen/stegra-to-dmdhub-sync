@@ -37,6 +37,12 @@ MANIFEST_FILENAME = ".stegra-sync-state.json"
 UNSORTED_FOLDER_NAME = "Unsorted"
 MANIFEST_VERSION = 1
 
+STEGRA_ROUTE_URL_FMT = "https://stegra.io/routes/{route_id}"
+
+
+def stegra_route_url(route_id: str) -> str:
+    return STEGRA_ROUTE_URL_FMT.format(route_id=route_id)
+
 # Characters forbidden by Windows + cleanup of leading/trailing dots/spaces
 _FORBIDDEN_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -171,10 +177,12 @@ def render_markdown(
     created = _format_iso(route.created_at)
     modified = _format_iso(route.modified_at)
 
+    url = stegra_route_url(route.id)
     return (
         f"# {route.name}\n"
         f"\n"
-        f"**Collection:** {collection_name}\n"
+        f"**Collection:** {collection_name}  \n"
+        f"**Stegra:** [Open in Stegra Studio]({url})\n"
         f"\n"
         f"| Stat | Value |\n"
         f"|---|---|\n"
@@ -195,14 +203,46 @@ def render_markdown(
     )
 
 
+def parse_markdown_sidecar(text: str) -> dict[str, str]:
+    """Extract the stats table from a markdown sidecar.
+
+    Returns a dict with keys like 'Distance', 'Duration', 'Unpaved', 'Color',
+    'Created', 'Modified' (only those present). Tolerant of small format
+    drift — silently skips rows it can't parse.
+    """
+    out: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("|") or set(line) <= {"|", "-", " "}:
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) != 2:
+            continue
+        key, value = cells
+        if not key or key.lower() in ("stat", "value"):
+            continue
+        out[key] = value
+    return out
+
+
+def read_markdown_sidecar(md_path: Path) -> Optional[dict[str, str]]:
+    """Best-effort read+parse. Returns None if the file is missing or empty."""
+    if not md_path.exists():
+        return None
+    try:
+        return parse_markdown_sidecar(md_path.read_text())
+    except OSError:
+        return None
+
+
 def _format_iso(s: str) -> str:
     """Render an ISO timestamp as `YYYY-MM-DD HH:MM UTC`. Returns input on
     parse failure."""
     if not s:
         return "—"
+    # Normalise: drop fractional seconds (any digit count), swap trailing Z
+    normalized = re.sub(r"\.\d+", "", s).replace("Z", "+00:00")
     try:
-        # tolerate trailing Z
-        normalized = s.replace("Z", "+00:00")
         dt = _dt.datetime.fromisoformat(normalized)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=_dt.timezone.utc)
@@ -219,6 +259,90 @@ def scan_target(target_dir: Path) -> LocalManifest:
     if existing is not None:
         return existing
     return LocalManifest()
+
+
+# ---------- tree rendering (used by `inspect` and the tail of `auto`) ----------
+
+# Layout columns (every line is prefixed with `_GLOBAL_INDENT` to align with
+# the leading `✓` of the summary line):
+#   global indent:  2 spaces
+#   folder line:    "├── " or "└── " (4 chars) → folder name at col 6
+#   route line:     "│   " (or 4 spaces under the last folder)
+#                   + "├── " or "└── " → route name at col 10
+_GLOBAL_INDENT = "  "
+_ROUTE_PREFIX_INNER = "│   "
+_ROUTE_PREFIX_LAST = "    "
+
+
+def render_tree(target_dir: Path, manifest: LocalManifest, console) -> None:  # type: ignore[no-untyped-def]
+    """Print a tree view of the target folder with per-route metadata."""
+    if not manifest.entries and not manifest.folder_names:
+        console.print(
+            f"\n[dim]Target {target_dir} has no manifest yet "
+            "(first sync will create one).[/dim]"
+        )
+        return
+
+    console.print(
+        f"  [green]✓[/green] {len(manifest.folder_names)} folder(s), "
+        f"{len(manifest.entries)} entry(ies) "
+        f"[dim](synced {manifest.synced_at or 'never'}, "
+        f"cursor={manifest.stegra_cursor})[/dim]"
+    )
+    console.print()
+    console.print(f"{_GLOBAL_INDENT}[bold]{target_dir}[/bold]")
+
+    entries_by_folder: dict[str, list[LocalEntry]] = {}
+    for e in manifest.entries:
+        head, _, _ = e.relative_path.partition("/")
+        entries_by_folder.setdefault(head, []).append(e)
+
+    folder_names = sorted(manifest.folder_names.values(), key=str.lower)
+    for i, fname in enumerate(folder_names):
+        is_last_folder = i == len(folder_names) - 1
+        folder_connector = "└── " if is_last_folder else "├── "
+        entries = sorted(
+            entries_by_folder.get(fname, []),
+            key=lambda x: x.relative_path.lower(),
+        )
+        count_label = (
+            f"({len(entries)} {'route' if len(entries) == 1 else 'routes'})"
+        )
+        console.print(
+            f"{_GLOBAL_INDENT}{folder_connector}"
+            f"[cyan]{fname}/[/cyan] [dim]{count_label}[/dim]"
+        )
+        sub_prefix = _ROUTE_PREFIX_LAST if is_last_folder else _ROUTE_PREFIX_INNER
+        for j, entry in enumerate(entries):
+            is_last_route = j == len(entries) - 1
+            route_connector = "└── " if is_last_route else "├── "
+            console.print(
+                f"{_GLOBAL_INDENT}{sub_prefix}{route_connector}"
+                f"{_route_line(target_dir, entry)}"
+            )
+
+
+def _route_line(target_dir: Path, entry: LocalEntry) -> str:
+    gpx_path = target_dir / entry.relative_path
+    md_path = gpx_path.with_suffix(".md")
+    name = gpx_path.stem
+
+    parts: list[str] = [f"[white]{name}.gpx[/white]"]
+    if not gpx_path.exists():
+        parts.append("[red][missing .gpx][/red]")
+
+    meta = read_markdown_sidecar(md_path)
+    if meta is None:
+        parts.append("[dim yellow](no sidecar)[/dim yellow]")
+    else:
+        if "Created" in meta:
+            parts.append(f"[dim]created {meta['Created']}[/dim]")
+        if "Modified" in meta:
+            parts.append(f"[dim]modified {meta['Modified']}[/dim]")
+
+    url = stegra_route_url(entry.route_id)
+    parts.append(f"[link={url}][cyan]Open in Stegra[/cyan][/link]")
+    return " · ".join(parts)
 
 
 # ---------- helper: expected layout from Stegra ----------

@@ -220,34 +220,12 @@ def _print_overview(snapshot) -> None:  # type: ignore[no-untyped-def]
 @app.command()
 def inspect(
     target: Path = typer.Option(..., "--target", "-t",
-        help="Path to the local target folder to inspect."),
+        help="Path to the target folder to inspect."),
 ) -> None:
-    """Read the local target's manifest and show its current state."""
+    """Show the target folder's current state as a tree."""
     target.mkdir(parents=True, exist_ok=True)
     manifest = local_target_mod.scan_target(target)
-    if not manifest.entries and not manifest.folder_names:
-        console.print(f"[dim]Target {target} has no manifest yet (first sync will create one).[/dim]")
-        return
-    by_collection: dict[str, int] = {}
-    for e in manifest.entries:
-        by_collection[e.collection_id] = by_collection.get(e.collection_id, 0) + 1
-
-    console.print(
-        f"  [green]✓[/green] {len(manifest.folder_names)} folder(s), "
-        f"{len(manifest.entries)} entry(ies) "
-        f"[dim](synced {manifest.synced_at or 'never'}, cursor={manifest.stegra_cursor})[/dim]"
-    )
-
-    table = Table(title=f"Local target: {target}", show_lines=False)
-    table.add_column("Collection ID", overflow="fold")
-    table.add_column("Folder")
-    table.add_column("Entries", justify="right")
-    for cid, name in sorted(manifest.folder_names.items(),
-                              key=lambda kv: kv[1].lower()):
-        count = by_collection.get(cid, 0)
-        cid_label = cid if cid else "[dim](unsorted)[/dim]"
-        table.add_row(cid_label, name, str(count))
-    console.print(table)
+    local_target_mod.render_tree(target, manifest, console)
 
 
 @app.command()
