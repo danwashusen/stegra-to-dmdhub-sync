@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "stegra-sync"
 version = "0.1.0"
-description = "One-way sync of routes/collections from Stegra.io to DMD Hub GPX folders."
+description = "One-way sync of routes and collections from Stegra.io to a local folder."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Dan", email = "dan@reactive.org" }]

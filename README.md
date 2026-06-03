@@ -1,12 +1,18 @@
 # stegra-sync
 
-One-way sync from **Stegra.io** Collections/Routes into a **local folder**.
-Stegra is the source of truth; the local folder mirrors your library with
+One-way sync from **Stegra.io** Collections/Routes into a **folder**.
+Stegra is the source of truth; the target folder mirrors your library with
 human-readable subdirectories, GPX files, and markdown sidecars.
+
+The target can be anywhere your filesystem can reach — a regular folder
+under `~/Documents`, a Google Drive folder (e.g.
+`~/Google Drive/My Drive/Rides/`), iCloud Drive, Dropbox, an external
+volume, or a network mount. Sync runs against whatever path you point it
+at; cloud sync clients pick up the changes from there.
 
 ## Status
 
-Phase 1+2 complete: pull, plan, apply against a local target. End-to-end
+Phase 1+2 complete: pull, plan, apply against a target folder. End-to-end
 verified against a real Stegra account (19 routes across 5 collections).
 
 ## Install
@@ -72,7 +78,7 @@ Writes:
 - `<workdir>/snapshots/stegra.cursor` — last `max_seq` for shell scripting.
 - `<workdir>/gpx/<route-uuid>.gpx` — per-route GPX cache.
 
-### `inspect` — show the local target's current state
+### `inspect` — show the target folder's current state
 
 ```bash
 stegra-sync inspect -t ~/Google\ Drive/My\ Drive/Rides/
@@ -81,7 +87,7 @@ stegra-sync inspect -t ~/Google\ Drive/My\ Drive/Rides/
 Reads the manifest at `<target>/.stegra-sync-state.json` and prints a
 folder/entry summary.
 
-### `plan` — diff Stegra vs the local target
+### `plan` — diff Stegra vs the target folder
 
 ```bash
 stegra-sync plan -t ~/Google\ Drive/My\ Drive/Rides/
@@ -169,9 +175,3 @@ bearer with a ~60 minute lifetime.
 For the AppleScript path (`--apple-events`), enable it once in Chrome:
 `Chrome menu bar → View → Developer → Allow JavaScript from Apple Events`,
 and accept the macOS Automation permission prompt the first time.
-
-## Legacy DMD Hub code
-
-Earlier iterations targeted DMD Hub directly. Those modules (`dmd.py`,
-`diff.py`, `apply.py`) are still in the tree but no longer wired through the
-CLI. They can be deleted or revisited if DMD Hub becomes the target again.
