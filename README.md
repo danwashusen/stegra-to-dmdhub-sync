@@ -12,10 +12,44 @@ at; cloud sync clients pick up the changes from there.
 
 ![stegra-sync terminal demo](usage.gif)
 
+## Features
+
+- **Stegra is the source of truth.** One-way only — routes flow from Stegra
+  into the target. Nothing is ever sent back.
+- **Collections map to subdirectories.** Each Stegra Collection becomes a
+  subfolder; each route is a `.gpx` file with a sidecar `.md` carrying
+  distance, duration, unpaved %, dates, and a clickable link back to the
+  route in Stegra Studio.
+- **Any folder works.** Local, Google Drive, iCloud Drive, Dropbox, an
+  external volume, a network mount — the tool only writes plain files;
+  cloud sync clients handle the rest.
+- **Incremental.** Only routes whose `modified_at` changed get re-written;
+  everything else is skipped via a cursor. Re-running on a clean state is
+  a fast no-op.
+- **Handles deletes, moves, and multi-collection membership.** Routes
+  removed from Stegra get cleaned up. Routes that move between collections
+  move locally. Routes in multiple collections are duplicated into each
+  subfolder.
+- **Safe by default.** `plan` shows a structured dry-run preview before any
+  write; `apply --execute` runs the writes with a single y/N prompt only
+  when something is about to be deleted.
+- **Resumable after failure.** The manifest at
+  `<target>/.stegra-sync-state.json` is persisted after every successful
+  action, so a partial failure can be picked up on the next run.
+- **Hands-off on existing files.** Only manifest-tracked files are ever
+  modified or deleted; any other content you put in the target folder is
+  left alone.
+- **One-command flow.** `stegra-sync auto` chains token refresh → snapshot
+  pull → diff → apply → tree report. First run prompts for setup; later
+  runs read the saved config.
+- **Filename collision resolution.** Route names with forbidden characters
+  are sanitised; duplicates within one folder get ` (2)`, ` (3)` suffixes.
+
 ## Status
 
-Phase 1+2 complete: pull, plan, apply against a target folder. End-to-end
-verified against a real Stegra account (19 routes across 5 collections).
+Working end-to-end. The full flow (`auto`) is verified against a real
+Stegra account (19 routes across 5 collections). Day-to-day use is a
+single command after the initial setup.
 
 ## Install
 
