@@ -104,7 +104,8 @@ for scripting, debugging, or dry-running before committing.
 stegra-sync auth
 
 # Zero-paste: extract the token from a live Chrome tab via AppleScript.
-# Requires the one-time Chrome setting noted below.
+# Requires the Chrome setting described in the Auth notes — recommended
+# to turn it on only for the sync run and back off afterwards.
 stegra-sync auth --apple-events
 ```
 
@@ -226,6 +227,28 @@ manifest doesn't claim are treated as unmanaged and never modified.
 Only the Stegra access token is captured by `auth`. It's an Azure AD B2C
 bearer with a ~60 minute lifetime.
 
-For the AppleScript path (`--apple-events`), enable it once in Chrome:
-`Chrome menu bar → View → Developer → Allow JavaScript from Apple Events`,
-and accept the macOS Automation permission prompt the first time.
+### Using `--apple-events`
+
+The AppleScript path reads the Stegra token straight from a running
+`stegra.io` tab in Chrome — no copy/paste. It requires a Chrome setting
+that's worth treating as a temporary capability rather than something to
+leave on:
+
+`Chrome menu bar → View → Developer → Allow JavaScript from Apple Events`
+
+When this is on, **any application on your Mac with Automation permission
+for Chrome can run arbitrary JavaScript in any of your open tabs** —
+including pages where you're signed in to banking, email, or other
+sensitive accounts. macOS will also prompt for Automation permission the
+first time `stegra-sync` (or your terminal) talks to Chrome.
+
+Recommended pattern:
+
+1. Toggle the menu item **on** just before you run `stegra-sync auto`.
+2. Run the sync.
+3. Toggle it **off** again.
+
+If you'd rather avoid the toggle each time, leave `--apple-events` off
+and use the default flow: `stegra-sync auth` prints a one-line DevTools
+snippet that copies the token to your clipboard, which you then paste.
+A few extra seconds, no system-wide capability change.
