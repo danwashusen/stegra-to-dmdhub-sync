@@ -44,9 +44,15 @@ just re-run the CLI — `-e` is editable so changes take effect immediately
 # from Chrome's cookie store.
 stegra-to-dmdhub-sync auth
 
-# Zero-paste: also extract the Stegra token from a live Chrome tab
+# Zero-paste for Stegra: also extract the token from a live Chrome tab
 # via AppleScript. Requires the one-time Chrome setting noted below.
 stegra-to-dmdhub-sync auth --apple-events
+
+# When the automatic DMD cookie read returns only `cookie_consent` (a
+# symptom of Chrome's Application-Bound Encryption blocking the decrypt),
+# the prompt will guide you to paste a Cookie header from DevTools.
+# Force that flow upfront with:
+stegra-to-dmdhub-sync auth --paste-cookies
 ```
 
 ### `pull` — read-only snapshot of your Stegra library
@@ -94,9 +100,11 @@ stegra-to-dmdhub-sync apply      # writes — disabled in v1
     and accept the macOS Automation permission prompt the first time.
 
 **DMD Hub cookies** — read automatically from Chrome's local cookie store via
-`browser-cookie3` (handles macOS Keychain decryption). Falls back to a paste
-prompt if the read fails (e.g. Chrome is encrypting cookies under a new
-scheme).
+`browser-cookie3`. On macOS Chrome ≥127, Application-Bound Encryption blocks
+the HttpOnly session cookies from being decrypted; the tool detects this and
+walks you through a one-line DevTools capture: Network panel → any request →
+Request Headers → "Cookie:" → Copy value → paste. Pass `--paste-cookies` to
+go straight to that flow.
 
 Re-run `stegra-to-dmdhub-sync auth` whenever Stegra calls start returning 401.
 

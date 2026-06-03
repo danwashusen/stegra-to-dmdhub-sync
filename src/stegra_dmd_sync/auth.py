@@ -103,14 +103,23 @@ class AuthError(RuntimeError):
     """Raised with a user-actionable message when auto-extraction fails."""
 
 
-def bootstrap(use_apple_events: bool = False, allow_paste: bool = True) -> AuthBundle:
+def bootstrap(
+    use_apple_events: bool = False,
+    allow_paste: bool = True,
+    paste_cookies: bool = False,
+) -> AuthBundle:
     """Capture Stegra token + DMD cookies, write auth.json.
 
     Stegra token comes from one of:
       - AppleScript-to-Chrome (`use_apple_events=True`, opt-in)
       - paste prompt (default)
 
-    DMD cookies come from Chrome's cookie store via browser-cookie3 (always).
+    DMD cookies come from one of:
+      - Chrome's cookie store via browser-cookie3 (default)
+      - DevTools paste (`paste_cookies=True`, or auto-triggered when the
+        cookie store path returns only non-session cookies — a typical
+        symptom of macOS Chrome's Application-Bound Encryption blocking
+        browser-cookie3 from decrypting HttpOnly session cookies).
     Both have a paste fallback when `allow_paste` is True.
     """
     token: Optional[str] = None
@@ -143,20 +152,35 @@ def bootstrap(use_apple_events: bool = False, allow_paste: bool = True) -> AuthB
     else:
         print("  -> token OK (expiry unknown)")
 
-    print("Reading DMD Hub cookies from Chrome cookie store...")
-    cookies, cookies_err = _read_dmd_cookies_from_chrome()
-    if cookies is None or not cookies:
-        if not allow_paste:
-            raise AuthError(cookies_err or "Couldn't read DMD cookies.")
-        print(f"  -> {cookies_err or 'no cookies found'}")
-        print("     Open DevTools on https://hub.dmdnavigation.com → Application →")
-        print("     Cookies → copy the auth/session cookies as JSON, e.g.")
-        print('     {"sessionid": "abc", "csrf_token": "xyz"}')
-        raw = _paste_prompt("Cookies JSON (or blank to skip): ")
-        cookies = json.loads(raw) if raw else {}
+    cookies: dict[str, str] = {}
+    if paste_cookies:
+        # Skip auto-detection entirely
+        cookies = _prompt_cookies_via_devtools()
+    else:
+        print("Reading DMD Hub cookies from Chrome cookie store...")
+        auto_cookies, cookies_err = _read_dmd_cookies_from_chrome()
+        if auto_cookies and _cookies_look_useful(auto_cookies):
+            cookies = auto_cookies
+        elif auto_cookies and not _cookies_look_useful(auto_cookies):
+            names = ", ".join(sorted(auto_cookies))
+            print(f"  -> only got {len(auto_cookies)} cookies ({names}) — no session "
+                  "cookie")
+            print("     (typical symptom of macOS Chrome's Application-Bound Encryption "
+                  "blocking browser-cookie3)")
+            if allow_paste:
+                cookies = _prompt_cookies_via_devtools(seed=auto_cookies)
+            else:
+                raise AuthError("DMD cookies incomplete (paste disabled).")
+        else:
+            if not allow_paste:
+                raise AuthError(cookies_err or "Couldn't read DMD cookies.")
+            print(f"  -> {cookies_err or 'no cookies found'}")
+            cookies = _prompt_cookies_via_devtools()
     if cookies:
         names = ", ".join(sorted(cookies)[:6]) + ("..." if len(cookies) > 6 else "")
         print(f"  -> {len(cookies)} cookies ({names})")
+    else:
+        raise AuthError("No DMD cookies captured.")
 
     bundle = AuthBundle(
         stegra_token=token,
@@ -225,6 +249,79 @@ def _read_dmd_cookies_from_chrome() -> tuple[Optional[dict[str, str]], Optional[
         return None, (f"No cookies for {DMD_DOMAIN} in Chrome cookie store. "
                       "Sign in via Chrome and try again.")
     return out, None
+
+
+# ---------- DMD: DevTools paste fallback ----------
+
+# Names we treat as "this is a non-session cookie" — purely advisory; if a
+# captured cookie set contains ONLY names like these, we assume the session
+# cookies weren't extracted and prompt the user to paste.
+_BENIGN_COOKIE_NAMES = {"cookie_consent", "cookieconsent", "_ga", "_gid", "_gat"}
+
+
+def _cookies_look_useful(cookies: dict[str, str]) -> bool:
+    """Heuristic: do these look like a working session?
+
+    True if any cookie name suggests a session/auth identifier, OR if the set
+    contains more than just well-known benign names.
+    """
+    if not cookies:
+        return False
+    session_hints = ("session", "sess", "auth", "token", "login",
+                     "phpsessid", "sid", "jwt")
+    for name in cookies:
+        lower = name.lower()
+        if any(hint in lower for hint in session_hints):
+            return True
+    return any(name not in _BENIGN_COOKIE_NAMES for name in cookies)
+
+
+def _prompt_cookies_via_devtools(seed: Optional[dict[str, str]] = None) -> dict[str, str]:
+    """Walk the user through grabbing the Cookie header from DevTools."""
+    print()
+    print("─" * 60)
+    print(" DMD Hub cookies — DevTools capture")
+    print("─" * 60)
+    print("1. Open https://hub.dmdnavigation.com/account/profile/gpx/ in Chrome.")
+    print("2. Open DevTools (Cmd-Opt-I), Network tab.")
+    print("3. Reload the page (Cmd-R).")
+    print("4. Click any request to hub.dmdnavigation.com in the list.")
+    print("5. Scroll to 'Request Headers' and find the 'Cookie:' line.")
+    print("6. Right-click the cookie value → Copy value.")
+    print("7. Paste it below (one line, ends in '; ...'):")
+    print()
+    raw = _paste_prompt("Cookie header: ").strip()
+    if not raw:
+        return seed or {}
+    parsed = _parse_cookies_input(raw)
+    # Merge with any non-session cookies we already had — keeps cookie_consent
+    # etc. in case the server needs them.
+    merged = dict(seed or {})
+    merged.update(parsed)
+    return merged
+
+
+def _parse_cookies_input(s: str) -> dict[str, str]:
+    """Accept JSON dict, Cookie header (`a=1; b=2`), or newline-separated pairs."""
+    s = s.strip()
+    if not s:
+        return {}
+    if s.startswith("{"):
+        return json.loads(s)
+    out: dict[str, str] = {}
+    # Treat both semicolons and newlines as separators
+    for chunk in s.replace("\n", ";").split(";"):
+        chunk = chunk.strip()
+        if not chunk or "=" not in chunk:
+            continue
+        # Strip a leading "Cookie:" if the user copied the whole header
+        if chunk.lower().startswith("cookie:"):
+            chunk = chunk.split(":", 1)[1].strip()
+            if "=" not in chunk:
+                continue
+        name, _, value = chunk.partition("=")
+        out[name.strip()] = value.strip()
+    return out
 
 
 # ---------- helpers ----------

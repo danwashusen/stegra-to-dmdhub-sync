@@ -66,6 +66,9 @@ class StegraSnapshot:
 
 # ---------- DMD Hub ----------
 
+ROOT_FOLDER_ID = ""   # sentinel for the DMD "Root" pseudo-folder
+
+
 @dataclass
 class DmdGpx:
     id: str
@@ -76,16 +79,21 @@ class DmdGpx:
     difficulty: str
     off_road_percentage: int
     tags: str
+    color: str
     gpx_length_km: float
     created: int               # epoch seconds
     modified: int
+    file_path: str             # e.g. /storage/users/{owner}/gpx_files/{file}
+    # Parsed from description footer; None means "unmanaged by this sync tool".
+    sync_state: Optional["SyncState"] = None
 
 
 @dataclass
 class DmdFolder:
-    id: str
+    id: str            # "" for the root pseudo-folder
     name: str
     gpx_ids: list[str]
+    parent_id: str = ""
 
 
 @dataclass
@@ -93,6 +101,16 @@ class DmdSnapshot:
     pulled_at: str
     folders: dict[str, DmdFolder]
     gpx: dict[str, DmdGpx]      # by gpx id
+
+    def root_folder(self) -> DmdFolder:
+        return self.folders.get(ROOT_FOLDER_ID,
+                                DmdFolder(id=ROOT_FOLDER_ID, name="Root", gpx_ids=[]))
+
+    def gpx_in_folder(self, folder_id: str) -> list[DmdGpx]:
+        f = self.folders.get(folder_id)
+        if not f:
+            return []
+        return [self.gpx[gid] for gid in f.gpx_ids if gid in self.gpx]
 
 
 # ---------- Sync state (embedded in DMD Public Description) ----------

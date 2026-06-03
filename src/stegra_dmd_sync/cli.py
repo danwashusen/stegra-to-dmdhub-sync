@@ -16,6 +16,7 @@ from rich.progress import (
 from rich.table import Table
 
 from . import auth as auth_mod
+from . import dmd as dmd_mod
 from . import stegra as stegra_mod
 
 app = typer.Typer(
@@ -47,6 +48,12 @@ def auth(
         help="Extract the Stegra token from a live Chrome tab via AppleScript. "
              "Requires Chrome → View → Developer → Allow JavaScript from Apple Events.",
     ),
+    paste_cookies: bool = typer.Option(
+        False, "--paste-cookies",
+        help="Skip auto-reading DMD cookies from Chrome's store; prompt for a "
+             "DevTools-copied Cookie header instead. Useful when macOS Chrome's "
+             "encryption blocks browser-cookie3.",
+    ),
 ) -> None:
     """Capture Stegra token + DMD cookies, write auth.json.
 
@@ -54,8 +61,12 @@ def auth(
     DMD cookies are read automatically from Chrome's cookie store.
 
     With --apple-events: token is also pulled automatically — no paste at all.
+    With --paste-cookies: skip the cookie-store read and use a DevTools paste.
     """
-    auth_mod.bootstrap(use_apple_events=apple_events)
+    auth_mod.bootstrap(
+        use_apple_events=apple_events,
+        paste_cookies=paste_cookies,
+    )
 
 
 @app.command()
@@ -192,10 +203,64 @@ def _print_overview(snapshot) -> None:  # type: ignore[no-untyped-def]
 def inspect(
     workdir: Path = typer.Option(DEFAULT_WORKDIR, "--workdir", "-w"),
 ) -> None:
-    """[STUB] Enumerate DMD Hub folders + GPX records."""
-    console.print("[yellow]inspect: DMD-side enumeration not implemented yet.[/yellow]")
-    console.print("See `src/stegra_dmd_sync/dmd.py` for outstanding API recon items.")
-    raise typer.Exit(code=1)
+    """Enumerate DMD Hub folders + GPX records into snapshots/dmd.json."""
+    bundle = _require_auth()
+    snapshots_dir = workdir / "snapshots"
+
+    console.print("[bold]→ Enumerating DMD Hub library...[/bold]")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task_id = progress.add_task("Listing", total=None)
+        def on_progress(phase: str, idx: int, total: int, label: str) -> None:
+            progress.update(task_id, description=f"Listing — {label}")
+        try:
+            snapshot = dmd_mod.fetch_snapshot(bundle, on_progress=on_progress)
+        except dmd_mod.DmdAuthError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=2)
+
+    out_path = dmd_mod.write_snapshot(snapshot, snapshots_dir)
+
+    # Summary counts (excluding the synthetic Root folder, which is always there)
+    user_folder_count = max(0, len(snapshot.folders) - 1)
+    managed = sum(1 for g in snapshot.gpx.values() if g.sync_state is not None)
+    unmanaged = len(snapshot.gpx) - managed
+    console.print(
+        f"  [green]✓[/green] {user_folder_count} folders, {len(snapshot.gpx)} GPX files "
+        f"([cyan]{managed}[/cyan] managed, [dim]{unmanaged} unmanaged[/dim])"
+    )
+    console.print(f"  [dim]→ {out_path}[/dim]")
+
+    _print_dmd_overview(snapshot)
+
+
+def _print_dmd_overview(snapshot) -> None:  # type: ignore[no-untyped-def]
+    from .models import ROOT_FOLDER_ID
+    table = Table(title="DMD Hub Folders", show_lines=False)
+    table.add_column("Folder")
+    table.add_column("GPX", justify="right")
+    table.add_column("Managed", justify="right")
+
+    def row(folder) -> None:
+        managed = sum(1 for gid in folder.gpx_ids
+                       if snapshot.gpx.get(gid) and snapshot.gpx[gid].sync_state)
+        name = "[dim]Root[/dim]" if folder.id == ROOT_FOLDER_ID else folder.name
+        table.add_row(name, str(len(folder.gpx_ids)), str(managed))
+
+    # Root first, then sorted user folders
+    if ROOT_FOLDER_ID in snapshot.folders:
+        row(snapshot.folders[ROOT_FOLDER_ID])
+    for f in sorted(
+        (f for fid, f in snapshot.folders.items() if fid != ROOT_FOLDER_ID),
+        key=lambda x: x.name.lower(),
+    ):
+        row(f)
+    console.print(table)
 
 
 @app.command()
