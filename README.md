@@ -40,7 +40,25 @@ pip install -e .
 Upgrade after code changes: `pipx install -e . --force` (option A) or just
 re-run the CLI — `-e` is editable so changes take effect immediately (option B).
 
-## Usage
+## Quick start
+
+```bash
+stegra-sync auto
+```
+
+The first run prompts for a target folder (e.g.
+`~/Google Drive/My Drive/Rides/`) and a couple of preferences, then saves
+the answers to `~/.config/stegra-sync/config.json`. Every subsequent run
+just reads the config and chains auth-refresh → pull → plan → apply in one
+shot. Destructive actions still get a single y/N confirmation; everything
+else just goes.
+
+Use `stegra-sync auto --reset` to redo the first-time setup.
+
+## Usage (individual commands)
+
+`auto` is the recommended path. The lower-level commands below are useful
+for scripting, debugging, or dry-running before committing.
 
 ### `auth` — capture your Stegra access token
 

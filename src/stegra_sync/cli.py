@@ -17,6 +17,7 @@ from rich.progress import (
 from rich.table import Table
 
 from . import auth as auth_mod
+from . import auto as auto_mod
 from . import local_apply as local_apply_mod
 from . import local_diff as local_diff_mod
 from . import local_target as local_target_mod
@@ -43,6 +44,28 @@ def _require_auth() -> auth_mod.AuthBundle:
         console.print("[yellow]Stegra token has likely expired. Run `stegra-sync auth` again.[/yellow]")
         raise typer.Exit(code=2)
     return bundle
+
+
+@app.command()
+def auto(
+    reset: bool = typer.Option(
+        False, "--reset",
+        help="Re-run first-time setup (overwrites the saved config).",
+    ),
+) -> None:
+    """One-command guided sync. First run prompts for a target folder etc.;
+    subsequent runs read the saved config and just do the sync."""
+    if reset:
+        if auto_mod.CONFIG_PATH.exists():
+            auto_mod.CONFIG_PATH.unlink()
+        console.print("[dim]Cleared saved config.[/dim]\n")
+    config = auto_mod.load_config()
+    if config is None:
+        config = auto_mod.first_run_setup(console)
+        console.print()
+    code = auto_mod.run_auto(config, console)
+    if code != 0:
+        raise typer.Exit(code=code)
 
 
 @app.command()
