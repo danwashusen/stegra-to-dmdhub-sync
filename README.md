@@ -1,4 +1,4 @@
-# stegra-dmd-sync
+# stegra-to-dmdhub-sync
 
 One-way sync from **Stegra.io** Collections/Routes → **DMD Hub** Folders/GPX files.
 Stegra is the source of truth.
@@ -13,7 +13,8 @@ and writes are stubbed pending API recon.
 Requires Python 3.11+. Pick one of these (Homebrew Python blocks bare
 `pip install` under PEP 668; this is normal).
 
-**A. pipx (recommended for a CLI).** Isolated venv, `sync` on your PATH globally:
+**A. pipx (recommended for a CLI).** Isolated venv, `stegra-to-dmdhub-sync` on
+your PATH globally:
 
 ```bash
 brew install pipx        # one-time, if not already installed
@@ -21,31 +22,61 @@ pipx ensurepath          # one-time
 pipx install -e .
 ```
 
-**B. Plain venv.** No new tools, but you must activate the venv to use `sync`:
+**B. Plain venv.** No new tools, but you must activate the venv to use the CLI:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-# later sessions: source .venv/bin/activate before running `sync`
+# later sessions: source .venv/bin/activate before running the CLI
 ```
 
-To upgrade after editing code: `pipx reinstall stegra-dmd-sync` (option A) or
-just re-run `sync` — `-e` is editable so changes take effect immediately
+To upgrade after editing code: `pipx install -e . --force` (option A) or
+just re-run the CLI — `-e` is editable so changes take effect immediately
 (option B).
 
 ## Usage
 
+### `auth` — capture credentials
+
 ```bash
-# Once per ~60 minutes (Stegra access tokens expire):
+# Default: paste Stegra token once, DMD cookies read automatically
+# from Chrome's cookie store.
 stegra-to-dmdhub-sync auth
 
-# Read-only snapshot of your Stegra library + GPX files:
+# Zero-paste: also extract the Stegra token from a live Chrome tab
+# via AppleScript. Requires the one-time Chrome setting noted below.
+stegra-to-dmdhub-sync auth --apple-events
+```
+
+### `pull` — read-only snapshot of your Stegra library
+
+```bash
+# Incremental: only fetches changes since the cached cursor.
 stegra-to-dmdhub-sync pull
 
-# Not yet implemented:
-stegra-to-dmdhub-sync inspect    # DMD-side snapshot
-stegra-to-dmdhub-sync plan       # diff + dry-run preview
+# Override the workdir (default ./sync-data):
+stegra-to-dmdhub-sync pull --workdir ~/stegra-snapshots
+stegra-to-dmdhub-sync pull -w ~/stegra-snapshots
+
+# Force a full re-pull (cursor=0). The local GPX cache is still respected,
+# so files only re-download when their `modified_at` actually changed.
+stegra-to-dmdhub-sync pull --full
+```
+
+Outputs:
+
+- `<workdir>/snapshots/stegra.json` — full merged state of routes and
+  collections, with a `cursor` for the next incremental pull.
+- `<workdir>/snapshots/stegra.cursor` — last `max_seq` (mirrors the cursor in
+  the JSON, useful for shell scripting).
+- `<workdir>/gpx/<route-uuid>.gpx` — per-route GPX cache.
+
+### `inspect` / `plan` / `apply` — not yet implemented
+
+```bash
+stegra-to-dmdhub-sync inspect    # DMD-side snapshot (stub)
+stegra-to-dmdhub-sync plan       # diff + dry-run preview (stub)
 stegra-to-dmdhub-sync apply      # writes — disabled in v1
 ```
 
@@ -69,15 +100,13 @@ scheme).
 
 Re-run `stegra-to-dmdhub-sync auth` whenever Stegra calls start returning 401.
 
-Credentials are stored at `~/.config/stegra-dmd-sync/auth.json` (mode 0600).
-
 ## Sync state storage
 
 Each synced GPX in DMD Hub carries an invisible HTML-comment footer in its
 **Public Description**:
 
 ```html
-<!-- stegra-to-dmdhub-sync:v1:{"route_id":"…","collection_id":"…","modified_at":"…","synced_at":"…"} -->
+<!-- stegra-sync:v1:{"route_id":"…","collection_id":"…","modified_at":"…","synced_at":"…"} -->
 ```
 
 This lets sync identify managed entries and skip unchanged ones via the
