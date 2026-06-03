@@ -84,12 +84,12 @@ def _list(cli: httpx.Client, folder_id: Optional[str] = None) -> dict:
     resp = cli.get(LIST_PATH, params=params)
     if resp.status_code in (301, 302, 401, 403):
         raise DmdAuthError(
-            "DMD Hub returned auth failure. Run `stegra-to-dmdhub-sync auth` again."
+            "DMD Hub returned auth failure. Run `stegra-sync auth` again."
         )
     if not resp.headers.get("content-type", "").startswith("application/json"):
         raise DmdAuthError(
             "DMD Hub returned non-JSON (likely a login redirect). "
-            "Run `stegra-to-dmdhub-sync auth` again."
+            "Run `stegra-sync auth` again."
         )
     data = resp.json()
     if not data.get("success"):

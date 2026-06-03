@@ -37,10 +37,10 @@ DEFAULT_WORKDIR = Path("./sync-data")
 def _require_auth() -> auth_mod.AuthBundle:
     bundle = auth_mod.load()
     if bundle is None:
-        console.print("[yellow]No credentials. Run `stegra-to-dmdhub-sync auth` first.[/yellow]")
+        console.print("[yellow]No credentials. Run `stegra-sync auth` first.[/yellow]")
         raise typer.Exit(code=2)
     if bundle.stegra_token_likely_expired():
-        console.print("[yellow]Stegra token has likely expired. Run `stegra-to-dmdhub-sync auth` again.[/yellow]")
+        console.print("[yellow]Stegra token has likely expired. Run `stegra-sync auth` again.[/yellow]")
         raise typer.Exit(code=2)
     return bundle
 
@@ -52,25 +52,16 @@ def auth(
         help="Extract the Stegra token from a live Chrome tab via AppleScript. "
              "Requires Chrome → View → Developer → Allow JavaScript from Apple Events.",
     ),
-    paste_cookies: bool = typer.Option(
-        False, "--paste-cookies",
-        help="Skip auto-reading DMD cookies from Chrome's store; prompt for a "
-             "DevTools-copied Cookie header instead. Useful when macOS Chrome's "
-             "encryption blocks browser-cookie3.",
-    ),
 ) -> None:
-    """Capture Stegra token + DMD cookies, write auth.json.
+    """Capture a Stegra access token and write auth.json.
 
-    Default flow: paste the Stegra token (DevTools snippet shown on screen),
-    DMD cookies are read automatically from Chrome's cookie store.
+    Default flow: paste the Stegra token (a DevTools console snippet that
+    copies the token to your clipboard is shown on screen).
 
-    With --apple-events: token is also pulled automatically — no paste at all.
-    With --paste-cookies: skip the cookie-store read and use a DevTools paste.
+    With --apple-events: the token is pulled directly from a running
+    stegra.io tab in Chrome — no paste required.
     """
-    auth_mod.bootstrap(
-        use_apple_events=apple_events,
-        paste_cookies=paste_cookies,
-    )
+    auth_mod.bootstrap(use_apple_events=apple_events)
 
 
 @app.command()
@@ -252,7 +243,7 @@ def plan(
 
     stegra_snapshot = stegra_mod.read_snapshot(snapshots_dir)
     if stegra_snapshot is None:
-        console.print("[yellow]No Stegra snapshot. Run `stegra-to-dmdhub-sync pull` first.[/yellow]")
+        console.print("[yellow]No Stegra snapshot. Run `stegra-sync pull` first.[/yellow]")
         raise typer.Exit(code=2)
 
     target.mkdir(parents=True, exist_ok=True)
@@ -364,7 +355,7 @@ def apply(
     if plan_file is None:
         plan_file = _latest_plan_file(plans_dir)
         if plan_file is None:
-            console.print("[yellow]No plan found. Run `stegra-to-dmdhub-sync plan` first.[/yellow]")
+            console.print("[yellow]No plan found. Run `stegra-sync plan` first.[/yellow]")
             raise typer.Exit(code=2)
     if not plan_file.exists():
         console.print(f"[red]Plan file not found: {plan_file}[/red]")

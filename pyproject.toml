@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stegra-dmd-sync"
+name = "stegra-sync"
 version = "0.1.0"
 description = "One-way sync of routes/collections from Stegra.io to DMD Hub GPX folders."
 readme = "README.md"
@@ -18,10 +18,10 @@ dependencies = [
 ]
 
 [project.scripts]
-stegra-to-dmdhub-sync = "stegra_dmd_sync.cli:app"
+stegra-sync = "stegra_sync.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"stegra_dmd_sync" = ["py.typed"]
+"stegra_sync" = ["py.typed"]

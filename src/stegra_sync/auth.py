@@ -11,7 +11,7 @@ Non-interactive by default:
 
 Falls back to paste prompts if either step fails.
 
-Stored at `~/.config/stegra-dmd-sync/auth.json` (mode 0600).
+Stored at `~/.config/stegra-sync/auth.json` (mode 0600).
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 CONFIG_DIR = Path(os.environ.get("STEGRA_SYNC_CONFIG_DIR") or
-                  Path.home() / ".config" / "stegra-dmd-sync")
+                  Path.home() / ".config" / "stegra-sync")
 AUTH_PATH = CONFIG_DIR / "auth.json"
 
 DMD_DOMAIN = "hub.dmdnavigation.com"
@@ -108,19 +108,15 @@ def bootstrap(
     allow_paste: bool = True,
     paste_cookies: bool = False,
 ) -> AuthBundle:
-    """Capture Stegra token + DMD cookies, write auth.json.
+    """Capture a Stegra access token and write auth.json.
 
     Stegra token comes from one of:
       - AppleScript-to-Chrome (`use_apple_events=True`, opt-in)
       - paste prompt (default)
 
-    DMD cookies come from one of:
-      - Chrome's cookie store via browser-cookie3 (default)
-      - DevTools paste (`paste_cookies=True`, or auto-triggered when the
-        cookie store path returns only non-session cookies — a typical
-        symptom of macOS Chrome's Application-Bound Encryption blocking
-        browser-cookie3 from decrypting HttpOnly session cookies).
-    Both have a paste fallback when `allow_paste` is True.
+    The `paste_cookies` parameter is accepted for backwards compatibility
+    with older callers but is now a no-op — DMD cookies are no longer
+    needed for the local-folder sync flow.
     """
     token: Optional[str] = None
     if use_apple_events:

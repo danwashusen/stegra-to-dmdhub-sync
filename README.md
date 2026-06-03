@@ -1,20 +1,21 @@
-# stegra-to-dmdhub-sync
+# stegra-sync
 
-One-way sync from **Stegra.io** Collections/Routes → **DMD Hub** Folders/GPX files.
-Stegra is the source of truth.
+One-way sync from **Stegra.io** Collections/Routes into a **local folder**.
+Stegra is the source of truth; the local folder mirrors your library with
+human-readable subdirectories, GPX files, and markdown sidecars.
 
 ## Status
 
-**Phase 1 (read-only) — partial.** Stegra pull works. DMD-side enumeration, diff,
-and writes are stubbed pending API recon.
+Phase 1+2 complete: pull, plan, apply against a local target. End-to-end
+verified against a real Stegra account (19 routes across 5 collections).
 
 ## Install
 
-Requires Python 3.11+. Pick one of these (Homebrew Python blocks bare
-`pip install` under PEP 668; this is normal).
+Requires Python 3.11+. Pick one (Homebrew Python blocks bare `pip install`
+under PEP 668; this is normal).
 
-**A. pipx (recommended for a CLI).** Isolated venv, `stegra-to-dmdhub-sync` on
-your PATH globally:
+**A. pipx (recommended for a CLI).** Isolated venv, `stegra-sync` on your
+PATH globally:
 
 ```bash
 brew install pipx        # one-time, if not already installed
@@ -28,101 +29,149 @@ pipx install -e .
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-# later sessions: source .venv/bin/activate before running the CLI
 ```
 
-To upgrade after editing code: `pipx install -e . --force` (option A) or
-just re-run the CLI — `-e` is editable so changes take effect immediately
-(option B).
+Upgrade after code changes: `pipx install -e . --force` (option A) or just
+re-run the CLI — `-e` is editable so changes take effect immediately (option B).
 
 ## Usage
 
-### `auth` — capture credentials
+### `auth` — capture your Stegra access token
 
 ```bash
-# Default: paste Stegra token once, DMD cookies read automatically
-# from Chrome's cookie store.
-stegra-to-dmdhub-sync auth
+# Default: paste the token once. The command prints a DevTools console
+# snippet that copies the token to your clipboard.
+stegra-sync auth
 
-# Zero-paste for Stegra: also extract the token from a live Chrome tab
-# via AppleScript. Requires the one-time Chrome setting noted below.
-stegra-to-dmdhub-sync auth --apple-events
-
-# When the automatic DMD cookie read returns only `cookie_consent` (a
-# symptom of Chrome's Application-Bound Encryption blocking the decrypt),
-# the prompt will guide you to paste a Cookie header from DevTools.
-# Force that flow upfront with:
-stegra-to-dmdhub-sync auth --paste-cookies
+# Zero-paste: extract the token from a live Chrome tab via AppleScript.
+# Requires the one-time Chrome setting noted below.
+stegra-sync auth --apple-events
 ```
 
-### `pull` — read-only snapshot of your Stegra library
+Tokens are short-lived (~60 minutes). Re-run when Stegra calls start
+returning 401. Credentials are stored at `~/.config/stegra-sync/auth.json`
+(mode 0600).
+
+### `pull` — fetch a Stegra snapshot + GPX cache
 
 ```bash
 # Incremental: only fetches changes since the cached cursor.
-stegra-to-dmdhub-sync pull
+stegra-sync pull
+
+# Force a full re-pull (cursor=0). GPX cache still respected — files only
+# re-download when their modified_at actually changed.
+stegra-sync pull --full
 
 # Override the workdir (default ./sync-data):
-stegra-to-dmdhub-sync pull --workdir ~/stegra-snapshots
-stegra-to-dmdhub-sync pull -w ~/stegra-snapshots
-
-# Force a full re-pull (cursor=0). The local GPX cache is still respected,
-# so files only re-download when their `modified_at` actually changed.
-stegra-to-dmdhub-sync pull --full
+stegra-sync pull -w ~/stegra-snapshots
 ```
 
-Outputs:
+Writes:
 
-- `<workdir>/snapshots/stegra.json` — full merged state of routes and
-  collections, with a `cursor` for the next incremental pull.
-- `<workdir>/snapshots/stegra.cursor` — last `max_seq` (mirrors the cursor in
-  the JSON, useful for shell scripting).
+- `<workdir>/snapshots/stegra.json` — full merged state with a `cursor`.
+- `<workdir>/snapshots/stegra.cursor` — last `max_seq` for shell scripting.
 - `<workdir>/gpx/<route-uuid>.gpx` — per-route GPX cache.
 
-### `inspect` / `plan` / `apply` — not yet implemented
+### `inspect` — show the local target's current state
 
 ```bash
-stegra-to-dmdhub-sync inspect    # DMD-side snapshot (stub)
-stegra-to-dmdhub-sync plan       # diff + dry-run preview (stub)
-stegra-to-dmdhub-sync apply      # writes — disabled in v1
+stegra-sync inspect -t ~/Google\ Drive/My\ Drive/Rides/
 ```
 
-## Auth notes
+Reads the manifest at `<target>/.stegra-sync-state.json` and prints a
+folder/entry summary.
 
-`stegra-to-dmdhub-sync auth` writes `~/.config/stegra-dmd-sync/auth.json` (mode 0600).
+### `plan` — diff Stegra vs the local target
 
-**Stegra access token** — short-lived (~60 min), Azure AD B2C bearer.
-
-  - *Default:* paste once. The command prints a DevTools console snippet that
-    copies the token to your clipboard.
-  - *With `--apple-events`:* the token is read directly from a running
-    `stegra.io` tab via AppleScript, no paste required. One-time setup:
-    `Chrome menu bar → View → Developer → Allow JavaScript from Apple Events`,
-    and accept the macOS Automation permission prompt the first time.
-
-**DMD Hub cookies** — read automatically from Chrome's local cookie store via
-`browser-cookie3`. On macOS Chrome ≥127, Application-Bound Encryption blocks
-the HttpOnly session cookies from being decrypted; the tool detects this and
-walks you through a one-line DevTools capture: Network panel → any request →
-Request Headers → "Cookie:" → Copy value → paste. Pass `--paste-cookies` to
-go straight to that flow.
-
-Re-run `stegra-to-dmdhub-sync auth` whenever Stegra calls start returning 401.
-
-## Sync state storage
-
-Each synced GPX in DMD Hub carries an invisible HTML-comment footer in its
-**Public Description**:
-
-```html
-<!-- stegra-sync:v1:{"route_id":"…","collection_id":"…","modified_at":"…","synced_at":"…"} -->
+```bash
+stegra-sync plan -t ~/Google\ Drive/My\ Drive/Rides/
+stegra-sync plan -t ~/Google\ Drive/My\ Drive/Rides/ -v   # show reasons
 ```
 
-This lets sync identify managed entries and skip unchanged ones via the
-Stegra `modified_at` timestamp. Records without this marker are treated as
-"unmanaged" and left untouched.
+Writes a timestamped JSON plan to `<workdir>/plans/plan-*.json` and prints
+a grouped action table.
+
+### `apply` — execute the plan
+
+```bash
+# Dry-run preview (default — no writes):
+stegra-sync apply -t ~/Google\ Drive/My\ Drive/Rides/
+
+# Actually apply:
+stegra-sync apply -t ~/Google\ Drive/My\ Drive/Rides/ --execute
+```
+
+Order: create_folder → rename_folder → upload_gpx → delete_gpx → delete_folder.
+Manifest is persisted after each successful action so a partial failure can
+be resumed by re-running `plan` then `apply` again.
+
+## Layout on disk
+
+```
+~/Google Drive/My Drive/Rides/
+├── .stegra-sync-state.json     # manifest (route+collection → file)
+├── Bunyip/
+│   ├── Bunyip Ridge Track Loop - Hard.gpx
+│   └── Bunyip Ridge Track Loop - Hard.md
+├── GSR/
+│   ├── GSR1-Day1A (182kms).gpx
+│   ├── GSR1-Day1A (182kms).md
+│   └── ...
+├── Pyrenees/
+│   └── ...
+├── Vic High Country/
+│   └── ...
+└── Unsorted/                   # routes with no Stegra collection
+    └── ...
+```
+
+Each `.md` sidecar carries the route's stats, dates, color, and description:
+
+```markdown
+# D1 Pyreness Untamed ADV-V2
+
+**Collection:** Pyrenees
+
+| Stat | Value |
+|---|---|
+| Distance | 257.0 km |
+| Duration | 4h 51m |
+| Unpaved | 175.7 km (68%) |
+| Color | #E834EC |
+| Created | 2026-05-10 11:11 UTC |
+| Modified | 2026-05-10 11:11 UTC |
+
+## Description
+
+Mixed Gravel roads, forestry trails and 4x4 tracks - Grade Level 2+
+
+---
+<sub>route_id: `865a762f-…` · collection_id: `f9e595c8-…` · synced: 2026-06-03T…</sub>
+```
 
 ## Identity model
 
 A composite key `(stegra_route_id, stegra_collection_id)` identifies each
-synced GPX. Routes in multiple Stegra Collections are duplicated into the
-corresponding DMD folders.
+synced entry. Routes in multiple Stegra Collections are duplicated into the
+corresponding subfolders. Filename collisions inside a folder are resolved
+by appending ` (2)`, ` (3)`.
+
+The manifest at `<target>/.stegra-sync-state.json` stores the identity of
+every managed file plus its Stegra `modified_at`, so the next `plan` knows
+exactly what changed and what to leave alone. Files in the target that the
+manifest doesn't claim are treated as unmanaged and never modified.
+
+## Auth notes
+
+Only the Stegra access token is captured by `auth`. It's an Azure AD B2C
+bearer with a ~60 minute lifetime.
+
+For the AppleScript path (`--apple-events`), enable it once in Chrome:
+`Chrome menu bar → View → Developer → Allow JavaScript from Apple Events`,
+and accept the macOS Automation permission prompt the first time.
+
+## Legacy DMD Hub code
+
+Earlier iterations targeted DMD Hub directly. Those modules (`dmd.py`,
+`diff.py`, `apply.py`) are still in the tree but no longer wired through the
+CLI. They can be deleted or revisited if DMD Hub becomes the target again.
