@@ -10,6 +10,8 @@ under `~/Documents`, a Google Drive folder (e.g.
 volume, or a network mount. Sync runs against whatever path you point it
 at; cloud sync clients pick up the changes from there.
 
+<video src="usage.mp4" controls muted playsinline width="100%"></video>
+
 ## Status
 
 Phase 1+2 complete: pull, plan, apply against a target folder. End-to-end
